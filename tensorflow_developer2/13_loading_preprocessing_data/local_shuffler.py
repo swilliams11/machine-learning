@@ -1,15 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-__author__      = "Sean Williams"
-__copyright__   = "Copyright 2020, Sean Williams"
-
-import os, fnmatch
-import sys
+import fnmatch
+import os
 import subprocess
+import sys
 import tarfile
+
 import pandas as pd
 import requests
+
+__author__ = "Sean Williams"
+__copyright__ = "Copyright 2020, Sean Williams"
 
 """
 This module includes a Fetcher class to fetch a tgz file from an internet resource
@@ -27,6 +29,7 @@ HOUSING_URL = DOWNLOAD_ROOT + "datasets/housing/housing.tgz"
 FILE_DIRECTORY = "datasets/housing"
 FILE_NAME = "housing.csv"
 
+
 class Fetcher:
     """
     This class is responsible for fetching a tgz file from an internet resource and saving it
@@ -43,14 +46,11 @@ class Fetcher:
         Creates the directory in extract_path in the working directory.
         Extracts tarball from the tgz file into the extract_path directory.
         Fetches the data
-        :param housing_url: the url of the dataset to download.
-        :param housing_path: the path of where the dataset should be located in the project's home directory
         :return: nothing
         """
         os.makedirs(self.extract_path, exist_ok=True)
         try:
             r = requests.get(self.download_url, stream=True)
-            requests.codes
             if r.status_code is requests.codes.ok:
                 with open(os.path.join(self.extract_path, self.filename), 'wb') as fd:
                     for chunk in r.iter_content(chunk_size=128):
@@ -81,6 +81,7 @@ class Shuffle:
      2) creating spliting the data into multiple files based on percentages (training, test, validation)
      3) spliting those files into multiple files as well.
     """
+
     def __init__(self, dataset_directory=None, dataset_filename=None, has_header_row=True):
         self.has_header_row = has_header_row
         self.dataset_directory = dataset_directory
@@ -98,10 +99,6 @@ class Shuffle:
         If has_header_row is False, then it will shuffle the dataset and write it to a new file.
         It will automatically rename the dataset_filename (i.e. housing.txt) to housing_shuffled.txt.
         On MacOs you must execute `brew install coreutils` first.
-
-        :param dataset_dir: folder path of the dataset file.
-        :param dataset_filename: file name of the actual dataset.
-        :param has_header_row: default is True, set to False if the file does not have a header row.
         :return: None
         """
         number_to_skip = "+2"
@@ -129,7 +126,8 @@ class Shuffle:
         """
         Checks if the `shuf` command was successful by comparing the line count for the original file and the
         shuffled file.
-        :return: returns True if the file counts of the original file and the new shuffled file are the same, False otherwise.
+        :return: returns True if the file counts of the original file and the new shuffled file are the same,
+        False otherwise.
         """
         line_count = "wc -l {}".format(self.dataset_file_location)
         # result = subprocess.check_output(["wc", "-l", dataset_file_location], shell=True)
@@ -146,11 +144,7 @@ class Shuffle:
         :param dataset_filename: dataset file name
         :return: The renamed dataset file (i.e. housing.csv becomes housing_shuffled.csv)
         """
-        split = ""
-        if dataset_filename is None:
-            split = self.dataset_filename.split(".", 1)
-        else:
-            split = dataset_filename.split(".", 1)
+        split = self.dataset_filename.split(".", 1) if dataset_filename is None else dataset_filename.split(".", 1)
         renamed = split[0]  # take the first part of the file name
         ext = split[1]
         return renamed + "-shuffled." + ext
@@ -172,7 +166,8 @@ class Shuffle:
         If percents="80 20 20", then it will split the dataset file into 3 files based on those
         percentages.
         :param dataset_filename: will use the shuffled file name by default and the dataset_directory
-        :param percents: A space separated list of the percents to split the file (.i.e. 60 20 20); it will use 80 10 10 by default
+        :param percents: A space separated list of the percents to split the file (.i.e. 60 20 20); it will
+        use 80 10 10 by default
         :return: None
         """
         if percents is None:
@@ -181,9 +176,7 @@ class Shuffle:
             dataset_filename = self.shuffled_filename
 
         split_cmd = "./split.sh " + self.dataset_directory + " " + dataset_filename + " " + percents
-        # split_cmd = 'awk -v size=$(wc -l < datasets/housing/housing_shuffled.csv) -v pcts="60 10 10" -f split.awk datasets/housing/housing_shuffled.csv'
-        # t = subprocess.Popen(split_cmd, shell=True).wait()
-        t = subprocess.check_call(split_cmd, shell=True)
+        subprocess.check_call(split_cmd, shell=True)
         if self.has_header_row:
             self._write_headers()
 
@@ -192,7 +185,8 @@ class Shuffle:
         Splits the dataset part files into multiple files based on the percentages provided.
         If percents="80 20 20", then it will split the dataset part files into 3 files based on those
         percentages.  It searches for the files with `part` in their name.
-        :param percents: A space separated list of the percents to split the file (.i.e. 60 20 20); it will use 80 10 10 by default
+        :param percents: A space separated list of the percents to split the file (.i.e. 60 20 20); it will
+        use 80 10 10 by default
         :return: None
         """
         if percents is None:
@@ -205,19 +199,14 @@ class Shuffle:
             if fnmatch.fnmatch(entry, pattern):
                 print(entry)
                 split_cmd = "./split.sh " + self.dataset_directory + " " + entry + " " + percents
-                t = subprocess.check_call(split_cmd, shell=True)
+                subprocess.check_call(split_cmd, shell=True)
         # TODO - this need to be modified to include part split or the main split.
-        #if self.has_header_row:
+        # if self.has_header_row:
         #    self._write_headers()
 
     def _write_headers(self):
         # shuffled_name = self.rename_shuffled_file(self.dataset_filename)
         headers = self._get_header_row()
-        # insert_headers_cmd = "sed -i '' '1 s/^/'" + headers + "'/' {}".format(self._add_parts_to_filename(self.shuffled_filename, 1))
-        # print(insert_headers_cmd)
-        # os.system(insert_headers_cmd)
-        # insert_headers_cmd = "sed -i '' '1 s/^/'" + headers + "'/' {}".format(add_parts_to_filename(shuffled_name, 2))
-        # os.system(insert_headers_cmd)
         updated_name = self._add_parts_to_filename(self.shuffled_filename, 2)
         df = pd.read_csv(os.path.join(self.dataset_directory, updated_name), header=None)
         df.to_csv(os.path.join(self.dataset_directory, updated_name), header=headers.split(","), index=False)
@@ -227,7 +216,7 @@ class Shuffle:
         df.to_csv(os.path.join(self.dataset_directory, updated_name), header=headers.split(","), index=False)
 
     def _get_header_row(self):
-        newline = os.linesep  # Defines the newline based on your OS.
+        # newline = os.linesep  # Defines the newline based on your OS.
         source_fp = open(self.dataset_file_location, 'r')
         first_row = True
         for row in source_fp:
@@ -247,5 +236,7 @@ def fetch_and_shuffle_ca_housing_data():
         # split train, test, validation files into 3 files, so 9 new files are created.
         shuffler.split_part_files(percents="40 30 30")
 
+
 if __name__ == "__main__":
     print("TODO - implement command line module")
+    fetch_and_shuffle_ca_housing_data()
