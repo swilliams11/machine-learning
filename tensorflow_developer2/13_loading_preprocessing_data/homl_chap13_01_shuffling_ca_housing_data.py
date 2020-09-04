@@ -1,11 +1,13 @@
-# TODO - implement tensoflow example code here.
+# TODO - implement tensorflow example code here.
 import fnmatch
 import os
 import local_shuffler
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-
+from sklearn.datasets import fetch_california_housing
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
 class TensorFlowTraining():
     train_file_pattern = "*part1*part*"
@@ -19,6 +21,19 @@ class TensorFlowTraining():
         self.training_files_location = os.path.join(self.dataset_directory, train_file_pattern)
         self.dataset_mean = []
         self.dataset_std = []
+        self.housing = None
+        self.X_train = None
+        self.y_train = None
+        self.X_valid = None
+        self.y_valid = None
+        self.X_test = None
+        self.y_test = None
+        self.train_filepaths = None
+        self.valid_filepaths = None
+        self.test_filepaths = None
+        self.X_mean = None
+        self.X_std = None
+
 
     def _create_train_file_paths(self, train_pattern_override=None):
         """
@@ -74,5 +89,60 @@ class TensorFlowTraining():
         dataset = dataset.map(self.preprocess(), num_parallel_calls=n_parse_threads)
         return dataset.batch(batch_size).prefetch(1)
 
+    def fetch_ca_datset(self):
+        """
+        Fetch the CA dataset and calculates the mean and standard deviation.
+        Copied from HOML book.
+        :return:
+        """
+        self.housing = fetch_california_housing()
+        X_train_full, X_test, y_train_full, y_test = train_test_split(
+            self.housing.data, self.housing.target.reshape(-1, 1), random_state=42)
+        self.X_train, self.X_valid, self.y_train, self.y_valid = train_test_split(
+            X_train_full, y_train_full, random_state=42)
 
-local_shuffler.fetch_and_shuffle_ca_housing_data()
+        scaler = StandardScaler()
+        scaler.fit(self.X_train)
+        self.X_mean = scaler.mean_
+        self.X_std = scaler.scale_
+
+    def write_to_multiple_csv_files(data, name_prefix, header=None, n_parts=10):
+        """
+        Save the files out to CSV files.
+        Copied from HOML.
+        :param name_prefix:
+        :param header:
+        :param n_parts:
+        :return:
+        """
+        housing_dir = os.path.join("datasets", "housing")
+        os.makedirs(housing_dir, exist_ok=True)
+        path_format = os.path.join(housing_dir, "my_{}_{:02d}.csv")
+
+        filepaths = []
+        m = len(data)
+        for file_idx, row_indices in enumerate(np.array_split(np.arange(m), n_parts)):
+            part_csv = path_format.format(name_prefix, file_idx)
+            filepaths.append(part_csv)
+            with open(part_csv, "wt", encoding="utf-8") as f:
+                if header is not None:
+                    f.write(header)
+                    f.write("\n")
+                for row_idx in row_indices:
+                    f.write(",".join([repr(col) for col in data[row_idx]]))
+                    f.write("\n")
+        return filepaths
+
+
+    def save_data_on_disk(self):
+        train_data = np.c_[self.X_train, self.y_train]
+        valid_data = np.c_[self.X_valid, self.y_valid]
+        test_data = np.c_[self.X_test, self.y_test]
+        header_cols = self.housing.feature_names + ["MedianHouseValue"]
+        header = ",".join(header_cols)
+
+        self.train_filepaths = self.save_to_multiple_csv_files(train_data, "train", header, n_parts=20)
+        self.valid_filepaths = self.save_to_multiple_csv_files(valid_data, "valid", header, n_parts=10)
+        self.test_filepaths = self.save_to_multiple_csv_files(test_data, "test", header, n_parts=10)
+
+
