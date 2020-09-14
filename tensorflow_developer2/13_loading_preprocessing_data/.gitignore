@@ -1,3 +1,4 @@
 datasets/
+models/
 **/mnist_model/
 **/mnist_model_dataset/
