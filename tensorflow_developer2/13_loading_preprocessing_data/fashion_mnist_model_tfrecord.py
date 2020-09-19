@@ -6,9 +6,6 @@ from tensorflow.keras.layers import Flatten, Dense, LayerNormalization
 from contextlib import ExitStack
 import IPython.display as display
 from sklearn.preprocessing import StandardScaler
-
-
-import pandas as pd
 import matplotlib.pyplot as plt
 import os
 
@@ -18,6 +15,9 @@ This class takes
 1) the fashion MNIST dataset, creates a training, validation and test set, 
 2) saves the data to TFRecord
 3) builds a sequential model and predicts the results.  
+4) loads the saved model if one exists
+5) Executes evaluate on the saved model
+6) saved the predicted results as an image. 
 """
 
 # Where to save the figures
@@ -27,7 +27,8 @@ IMAGES_PATH = os.path.join(PROJECT_ROOT_DIR, "images", CHAPTER_ID)
 os.makedirs(IMAGES_PATH, exist_ok=True)
 BATCH_SIZE = 32
 
-def save_fig(fig_id, tight_layout=True, fig_extension="png", resolution=600):
+
+def save_fig(fig_id, tight_layout=True, fig_extension="png", resolution=900):
     """
     Save the image.
     :param fig_id: image name
@@ -124,6 +125,7 @@ def parse_example_proto_test_predict(example_proto):
     # image = tf.io.decode_jpeg(example["image"])
     image = tf.reshape(image, shape=[28, 28])
     image = tf.cast(image, tf.float32) / 255.
+    # TODO - normalize the data here as well (so calc the mean and standard deviation)
     return image, example["label"]
 
 
@@ -146,10 +148,11 @@ def dataset_reader(filepaths, repeat=1, n_readers=5, n_read_threads=None, shuffl
     dataset = dataset.interleave(lambda filepath: tf.data.TFRecordDataset(filepath),
                                  cycle_length=n_readers,
                                  num_parallel_calls=n_read_threads)
-    # Randomly shuffles the elements of this dataset, draws 1 element from buffer and replaces it with new element
-    dataset = dataset.shuffle(shuffle_buffer_size)
+
     # map the preprocessing function onto the dataset.
     if training:
+        # Randomly shuffles the elements of this dataset, draws 1 element from buffer and replaces it with new element
+        dataset = dataset.shuffle(shuffle_buffer_size)
         dataset = dataset.map(parse_example_proto, num_parallel_calls=n_parse_threads)
     else:
         dataset = dataset.map(parse_example_proto_test_predict, num_parallel_calls=n_parse_threads)
@@ -193,13 +196,13 @@ if not os.path.exists(os.path.join(mnist_dir, "fashion_mnist_test.tfrecord.tfrec
 
 # Create the file paths
 train_filepaths = create_file_paths(mnist_dir, "*train*", shuffle=True)
-test_filepaths = create_file_paths(mnist_dir, "*test*", shuffle=True)
-valid_filepaths = create_file_paths(mnist_dir, "*valid*", shuffle=True)
+test_filepaths = create_file_paths(mnist_dir, "*test*", shuffle=False)
+valid_filepaths = create_file_paths(mnist_dir, "*valid*", shuffle=False)
 
 # Read the sharded data back
 train_dataset = dataset_reader(train_filepaths, repeat=None, shuffle_buffer_size=50000)
-valid_dataset = dataset_reader(valid_filepaths, repeat=1, training=False)
-test_dataset = dataset_reader(test_filepaths, repeat=1, training=False)
+valid_dataset = dataset_reader(valid_filepaths, training=False)
+test_dataset = dataset_reader(test_filepaths, training=False)
 result = test_dataset.element_spec
 result2 = result[0]
 # map the
@@ -240,11 +243,18 @@ else:
     print("Loading the saved model.")
     history = np.load(history_location, allow_pickle='TRUE').item() if os.path.exists(history_location) else None
     model = tf.keras.models.load_model(model_location)
+    # This is the line the fixed my low accuracy on the saved test set. You have to call model compile.
+    # The documentation states that the model is already compiled.
+    # Once I added this line the accuracy went from 10% to 87%
+    model.compile(loss="sparse_categorical_crossentropy", optimizer="sgd", metrics=["accuracy"])
 
+# print("Model weights")
+# print(model.weights)
 print("Model Summary")
 print(model.summary())
 
-model.evaluate(test_dataset, verbose=2)
+history_eval = model.evaluate(test_dataset, batch_size=32)
+print(history_eval)
 
 # one Dataset item has 32 records
 for X, y in test_dataset.take(1):
@@ -259,14 +269,18 @@ X_new = test_dataset.take(1)
 y_proba = model.predict(X_new)
 y_proba.round(2)
 y_pred = model.predict_classes(X_new)
-new_array = np.array(zip(y_pred, class_names[y_pred]))
+#new_array = np.array(zip(y_pred, class_names[y_pred]))
+print("Predictions")
 print(y_pred)
-print(class_names)
-#print(new_array)
+print("Predicted Class Names")
+for i in y_pred:
+    print(class_names[i])
 
-
-
-
-
-
-
+# Save the predicted class names and the images to a file.
+for X, y in X_new:
+    for i in range(32):
+        plt.subplot(7, 5, i + 1)
+        plt.imshow(X[i].numpy(), cmap="binary")
+        plt.axis("off")
+        plt.title(str(y[i].numpy()) + ' ' + str(class_names[y[i].numpy()]))
+    save_fig("fashion_mnist_predictions", tight_layout=False)
